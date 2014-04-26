@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html>
 <head>
+<script src="../target/cljsbuild-main.js"></script>
 <title>grind</title>
 </head>
-<body>
+<body onload="grind.core.start()" onkeydown="grind.core.keydown(event)" onkeyup="grind.core.keyup(event)">
 <canvas id="grind" width="1000" height="600"></canvas>
-<script src="../target/cljsbuild-main.js"></script>
 </body>
 </html>

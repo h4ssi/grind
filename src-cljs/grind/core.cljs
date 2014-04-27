@@ -103,9 +103,8 @@
                                          (:up   :down)  [pos (dir-to-pos dir)]
                                          :mid           [(dir-to-pos :mid) (dir-to-pos :mid)]))
 
-        absolute-for-dir (fn [dir-inner dir-outer borders] (if (contains? borders dir-outer)
-                                                             (mapv (partial absolute-pos dir-inner) (dir-outer borders))
-                                                             nil))
+        absolute-for-dir (fn [dir-inner dir-outer borders] (when (contains? borders dir-outer)
+                                                             (mapv (partial absolute-pos dir-inner) (dir-outer borders))))
 
         absolute-gates   (fn [dir-inner dir-outer positions]
                            (into {} (for [[path-num borders] positions] [path-num (absolute-for-dir dir-inner dir-outer borders)])))
@@ -123,7 +122,7 @@
         route            (fn [sx sy tx ty] (let [[ssx ttx] (sort [sx tx])
                                                  [ssy tty] (sort [sy ty])]
                                              (apply concat (for [x (range ssx (inc ttx))
-                                                                 y (range ssy (inc tty))] [[x ssy] [ssx y]]))))
+                                                                 y (range ssy (inc tty))] [[x sy] [tx y]]))))
 
         all-routes       (into #{} 
                                (apply concat (for [[path gates] all-gates 

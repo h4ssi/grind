@@ -65,9 +65,10 @@
         (recur is (path-to-coords i coords))
         coords)))) 
 
-(defn get-gates [coords x y]
-  (let [coord              (get coords [x y])
-        filter-down-rights (partial filterv #(contains? #{:down :right} %))
+(defn get-gates [coords x y & options]
+  (let [borders            (into #{} (concat [:down :right] options)) ; chunk (x,y) is responsible for, down right and mid (via options)
+        coord              (get coords [x y])
+        filter-down-rights (partial filterv #(contains? borders %)) 
         down-rights        (into {} (for [[path-num connection] coord] 
                                       (let [filtered (filter-down-rights connection)]
                                         (if (empty? filtered)
@@ -75,30 +76,32 @@
                                           [path-num filtered]))))]
     down-rights))
 
-(defn rng-for [seed x y] (random-seed (str seed \  x \   y)))
+(defn rng-for [seed x y] (random-seed (str seed \  x \  y)))
 
-(def map-chunk-size 100)
+(def map-chunk-size 101)
 
 (defn get-gates-positions [gates rng]
   (into {} (for 
              [[path-num borders] gates] 
              [path-num (into {} (map #(vector % [(random-int rng 0 (dec map-chunk-size))]) borders))])))
-  
+
 (defn map-chunk [seed coords x y]
-  (let [gates-positions (fn [n-x n-y] (let [rng       (rng-for seed n-x n-y)
-                                            gates     (get-gates coords n-x n-y)
-                                            positions (get-gates-positions gates rng)]
-                                        [positions rng]))
+  (let [gates-positions (fn [n-x n-y & with-mid?] (let [rng       (rng-for seed n-x n-y)
+                                                        gates     (apply get-gates coords n-x n-y with-mid?)
+                                                        positions (get-gates-positions gates rng)]
+                                                    [positions rng]))
 
         dir-to-pos       (fn [dir] (case dir
                                      :left  0
                                      :right (dec map-chunk-size)
                                      :up    0
-                                     :down  (dec map-chunk-size)))
+                                     :down  (dec map-chunk-size)
+                                     :mid   (quot map-chunk-size 2)))
 
         absolute-pos     (fn [dir pos] (case dir
                                          (:left :right) [(dir-to-pos dir) pos]
-                                         (:up   :down)  [pos (dir-to-pos dir)]))
+                                         (:up   :down)  [pos (dir-to-pos dir)]
+                                         :mid           [(dir-to-pos :mid) (dir-to-pos :mid)]))
 
         absolute-for-dir (fn [dir-inner dir-outer borders] (if (contains? borders dir-outer)
                                                              (mapv (partial absolute-pos dir-inner) (dir-outer borders))
@@ -107,17 +110,27 @@
         absolute-gates   (fn [dir-inner dir-outer positions]
                            (into {} (for [[path-num borders] positions] [path-num (absolute-for-dir dir-inner dir-outer borders)])))
 
-        neighbor-gates   (fn [dir] (let [[n-x n-y]    (move-coord x y dir)
+        neighbor-gates   (fn [dir] (let [[n-x n-y]     (move-coord x y dir)
                                          [positions _] (gates-positions n-x n-y)]
                                      (absolute-gates dir (dir opposit) positions)))
 
-        [positions rng]  (gates-positions x y)
+        [positions rng]  (gates-positions x y :mid)
 
         my-gates         (fn [dir] (absolute-gates dir dir positions))
 
-        all-gates        (merge-with concat (my-gates :down) (my-gates :right) (neighbor-gates :up) (neighbor-gates :left))]
-    [all-gates]))
+        all-gates        (merge-with concat (my-gates :mid) (my-gates :down) (my-gates :right) (neighbor-gates :up) (neighbor-gates :left))
 
+        route            (fn [sx sy tx ty] (let [[ssx ttx] (sort [sx tx])
+                                                 [ssy tty] (sort [sy ty])]
+                                             (concat (for [x (range ssx (inc ttx))
+                                                           y (range ssy (inc tty))] [[x ssy] [ssx y]]))))
+
+        all-routes       (into #{} 
+                               (concat (for [[path gates] all-gates 
+                                             :when path 
+                                             :when gates] 
+                                         (let [[g1 g2] gates] (apply route (concat g1 g2))))))]
+    all-routes))
 
 
 ; game loop + graphics

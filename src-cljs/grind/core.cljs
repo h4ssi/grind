@@ -6,6 +6,69 @@
 (defn l [i]
   (.log js/console (str i)) i)
 
+; map
+
+(defn random-seed [seed] 
+  (let [seedrandom (.-seedrandom js/Math)] (seedrandom. seed)))
+
+(defn random-int  [rng from to] (+ (.floor js/Math (* (rng) (inc (- to from)))) from))
+
+(defn random-elem [rng elems] (get elems (random-int rng 0 (dec (count elems)))))
+
+(def dirs [:left :right :up :down])
+
+(def opposit {:left :right
+              :right :left
+              :up :down
+              :down :up})
+
+(defn lvl-paths [seed max-level]
+  (let [rng  (random-seed seed)
+        tabu (fn [d1 d2] (filterv #(not (contains? #{d1 d2} %)) dirs))
+        path (fn [general-dir] 
+               (loop [p   [general-dir]
+                      lvl (assoc (apply hash-map (flatten (map #(vector % 0) dirs))) general-dir 1)
+                      prev general-dir]
+                 (let [step (random-elem rng (tabu (general-dir opposit) (prev opposit)))]
+                   (if (= (dec max-level) (step lvl))
+                     (conj p step)
+                     (recur (conj p step) (update-in lvl [step] inc) step)))))]
+    (mapv #(path %) dirs))) 
+
+(defn lvl-gate-coords [paths]
+  (let [move-coord     (fn [x y dir] 
+                         (case dir
+                           :left  [(dec x) y]
+                           :right [(inc x) y]
+                           :up    [x (dec y)]
+                           :down  [x (inc y)]))
+
+        add-connected  (fn [coords path-num x y prev-dir dir]
+                         (update-in coords [[x y] path-num] #(conj % [(prev-dir opposit :mid) dir]))) 
+
+        path-to-coords (fn [path-num init-coords]
+                         (loop [coords init-coords
+                                [x y] [0 0]
+                                prev-dir :mid
+                                [dir & path] (get paths path-num)]
+                           (if dir
+                             (recur (add-connected coords path-num x y prev-dir dir)
+                                    (move-coord x y dir)
+                                    dir
+                                    path)
+                             (add-connected coords path-num x y prev-dir :mid))))]
+
+    (loop [[i & is] (range (count paths))
+           coords {}]
+      (if i
+        (recur is (path-to-coords i coords))
+        coords)))) 
+
+(defn map-chunk [seed, x, y] nil)
+
+
+; game loop + graphics
+
 (defn ctx []
   (.. js/document (getElementById "grind") (getContext "2d")))
 

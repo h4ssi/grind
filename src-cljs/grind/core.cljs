@@ -122,18 +122,20 @@
 
         route            (fn [sx sy tx ty] (let [[ssx ttx] (sort [sx tx])
                                                  [ssy tty] (sort [sy ty])]
-                                             (concat (for [x (range ssx (inc ttx))
-                                                           y (range ssy (inc tty))] [[x ssy] [ssx y]]))))
+                                             (apply concat (for [x (range ssx (inc ttx))
+                                                                 y (range ssy (inc tty))] [[x ssy] [ssx y]]))))
 
         all-routes       (into #{} 
-                               (concat (for [[path gates] all-gates 
+                               (apply concat (for [[path gates] all-gates 
                                              :when path 
                                              :when gates] 
-                                         (let [[g1 g2] gates] (apply route (concat g1 g2))))))]
+                                               (let [[g1 g2] gates] (apply route (concat g1 g2))))))]
     all-routes))
 
 
 ; game loop + graphics
+
+(def block-size 5)
 
 (defn ctx []
   (.. js/document (getElementById "grind") (getContext "2d")))
@@ -142,19 +144,27 @@
 (def pressed (chan))
 (def released (chan))
 
-(defn draw [state x]
+(defn draw [state]
   (let [c (ctx)]
     (.clearRect c 0 0 2000 2000)
+    ; draw map
+    (set! (.-fillStyle c) "rgb(0,0,200)")
+    (dorun (for [x (range map-chunk-size)
+                 y (range map-chunk-size)]
+             (when-not (contains? (:chunk state) [x y])
+               (.fillRect c (* x block-size) (* y block-size) block-size block-size))))
+    ; draw player
     (set! (.-fillStyle c) "rgb(200,0,0)")
-    (.fillRect c (+ (get-in state [:pos :x]) x) (get-in state [:pos :y]) 100 100)))
+    (.fillRect c (get-in state [:pos :x]) (get-in state [:pos :y]) 5 5)))
 
 (defn render-callback [state]
   (fn [t] ; t in millis
-    (draw state 0) ;(* 10 (.sin js/Math (* 0.001 t))))
+    (draw state) ;(* 10 (.sin js/Math (* 0.001 t))))
     (go (>! drawn t))))
 
 (def initial-state {:pos { :x 100 :y 100 }
-                    :vel { :x 0   :y 0   }})
+                    :vel { :x 0   :y 0   }
+                    :chunk (map-chunk "" (grind.core/lvl-gate-coords (grind.core/lvl-paths "" 3)) 0 0)})
 
 (def key-inputs {37 :left 
                  38 :up

@@ -137,22 +137,32 @@
 
 (def block-size 5)
 
-(defn ctx []
-  (.. js/document (getElementById "grind") (getContext "2d")))
+(defn render-context 
+  ([elem] (.. elem (getContext "2d")))
+  ([]     (render-context (.. js/document (getElementById "grind")))))
 
 (def drawn (chan (sliding-buffer 1))) 
 (def pressed (chan))
 (def released (chan))
 
+(defn draw-map-chunk [map-chunk]
+  (let [canvas (.. js/document (createElement "canvas"))
+        size   (* block-size map-chunk-size)]
+    (set! (.-width  canvas) size)
+    (set! (.-height canvas) size)
+    (let [c (render-context canvas)]
+      (set! (.-fillStyle c) "rgb(0,0,200)")
+      (dorun (for [x (range map-chunk-size)
+                   y (range map-chunk-size)]
+               (when-not (contains? map-chunk [x y])
+                 (.fillRect c (* x block-size) (* y block-size) block-size block-size))))
+      canvas)))
+
 (defn draw [state]
-  (let [c (ctx)]
+  (let [c (render-context)]
     (.clearRect c 0 0 2000 2000)
     ; draw map
-    (set! (.-fillStyle c) "rgb(0,0,200)")
-    (dorun (for [x (range map-chunk-size)
-                 y (range map-chunk-size)]
-             (when-not (contains? (:chunk state) [x y])
-               (.fillRect c (* x block-size) (* y block-size) block-size block-size))))
+    (.drawImage c (:chunk-texture state) 0 0)
     ; draw player
     (set! (.-fillStyle c) "rgb(200,0,0)")
     (.fillRect c (get-in state [:pos :x]) (get-in state [:pos :y]) 5 5)))
@@ -162,9 +172,11 @@
     (draw state) ;(* 10 (.sin js/Math (* 0.001 t))))
     (go (>! drawn t))))
 
-(def initial-state {:pos { :x 100 :y 100 }
-                    :vel { :x 0   :y 0   }
-                    :chunk (map-chunk "" (grind.core/lvl-gate-coords (grind.core/lvl-paths "" 3)) 0 0)})
+(def initial-state (let [chunk (map-chunk "" (grind.core/lvl-gate-coords (grind.core/lvl-paths "" 3)) 0 0)]
+                     {:pos { :x 100 :y 100 }
+                      :vel { :x 0   :y 0   }
+                      :chunk chunk
+                      :chunk-texture (draw-map-chunk chunk)}))
 
 (def key-inputs {37 :left 
                  38 :up

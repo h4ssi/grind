@@ -135,11 +135,15 @@
 
 ; game loop + graphics
 
-(def block-size 5)
+(def block-size 30)
+(def map-chunk-texture-width (* block-size map-chunk-size))
+(def player-size 10)
+
+(defn render-canvas [] (.. js/document (getElementById "grind")))
 
 (defn render-context 
   ([elem] (.. elem (getContext "2d")))
-  ([]     (render-context (.. js/document (getElementById "grind")))))
+  ([]     (render-context (render-canvas))))
 
 (def drawn (chan (sliding-buffer 1))) 
 (def pressed (chan))
@@ -158,23 +162,35 @@
                  (.fillRect c (* x block-size) (* y block-size) block-size block-size))))
       canvas)))
 
-(defn draw [state]
-  (let [c (render-context)]
-    (.clearRect c 0 0 2000 2000)
+(defn draw [canvas context state]
+  (let [c             context
+        px            (get-in state [:pos :x])
+        py            (get-in state [:pos :y])
+        w             (.-width  canvas)
+        h             (.-height canvas)
+        tx            (quot (.-width  canvas) 2)
+        ty            (quot (.-height canvas) 2)
+        player-offset (quot player-size -2)
+        chunk-offset  (quot map-chunk-texture-width -2)]
+    (.clearRect c 0 0 w h)
+    (.save c)
+    (.translate c (- tx px) (- ty py))
     ; draw map
-    (.drawImage c (:chunk-texture state) 0 0)
+    (.drawImage c (:chunk-texture state) chunk-offset chunk-offset)
     ; draw player
     (set! (.-fillStyle c) "rgb(200,0,0)")
-    (.fillRect c (get-in state [:pos :x]) (get-in state [:pos :y]) 5 5)))
+    (.translate c player-offset player-offset)
+    (.fillRect c px  py player-size player-size)
+    (.restore c)))
 
-(defn render-callback [state]
+(defn render-callback [canvas context state]
   (fn [t] ; t in millis
-    (draw state) ;(* 10 (.sin js/Math (* 0.001 t))))
+    (draw canvas context state) ;(* 10 (.sin js/Math (* 0.001 t))))
     (go (>! drawn t))))
 
 (def initial-state (let [chunk (map-chunk "" (grind.core/lvl-gate-coords (grind.core/lvl-paths "" 3)) 0 0)]
-                     {:pos { :x 100 :y 100 }
-                      :vel { :x 0   :y 0   }
+                     {:pos { :x 0 :y 0 }
+                      :vel { :x 0 :y 0 }
                       :chunk chunk
                       :chunk-texture (draw-map-chunk chunk)}))
 
@@ -211,19 +227,21 @@
          (change-pos :y))))
 
 (defn game-loop []
-  (go (loop [[state inputs]
-             [initial-state []]]
-        (recur
-          (alt! [drawn] (let [new-state (game-step state inputs)]
-                          (.requestAnimationFrame js/window (render-callback new-state)) 
-                          [new-state []])
-                [pressed]  ([e _] [state (key-pressed  inputs e)]) 
-                [released] ([e _] [state (key-released inputs e)]))))))
+  (let [canvas  (render-canvas)
+        context (render-context)]
+    (go (loop [[state inputs]
+               [initial-state []]]
+          (recur
+            (alt! [drawn] (let [new-state (game-step state inputs)]
+                            (.requestAnimationFrame js/window (render-callback canvas context new-state)) 
+                            [new-state []])
+                  [pressed]  ([e _] [state (key-pressed  inputs e)]) 
+                  [released] ([e _] [state (key-released inputs e)])))))
+    (go (>! drawn :start))))
 
 (defn ^:export start []
   (repl/connect "http://localhost:9000/repl")
-  (game-loop)
-  (go (>! drawn 0)))
+  (game-loop))
 
 (defn ^:export keydown [e]
   (.preventDefault e)

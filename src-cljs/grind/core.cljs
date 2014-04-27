@@ -44,7 +44,7 @@
                            :down  [x (inc y)]))
 
         add-connected  (fn [coords path-num x y prev-dir dir]
-                         (update-in coords [[x y] path-num] #(conj % [(prev-dir opposit :mid) dir]))) 
+                         (assoc-in coords [[x y] path-num] [(prev-dir opposit :mid) dir])) 
 
         path-to-coords (fn [path-num init-coords]
                          (loop [coords init-coords
@@ -63,6 +63,17 @@
       (if i
         (recur is (path-to-coords i coords))
         coords)))) 
+
+(defn get-gates [coords x y]
+  (let [coord              (get coords [x y])
+        filter-down-rights (partial filterv #(contains? #{:down :right} %))
+        down-rights        (into {} 
+                                 (for [[path-num connection] coord] 
+                                   (let [filtered (filter-down-rights connection)]
+                                     (if (empty? filtered)
+                                       nil
+                                       [path-num filtered]))))]
+    down-rights))
 
 (defn map-chunk [seed, x, y] nil)
 

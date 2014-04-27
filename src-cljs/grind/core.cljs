@@ -35,15 +35,16 @@
                      (recur (conj p step) (update-in lvl [step] inc) step)))))]
     (mapv #(path %) dirs))) 
 
-(defn lvl-gate-coords [paths]
-  (let [move-coord     (fn [x y dir] 
-                         (case dir
-                           :left  [(dec x) y]
-                           :right [(inc x) y]
-                           :up    [x (dec y)]
-                           :down  [x (inc y)]))
+(defn move-coord [x y dir] 
+  (case dir
+    :left  [(dec x) y]
+    :right [(inc x) y]
+    :up    [x (dec y)]
+    :down  [x (inc y)]))
 
-        add-connected  (fn [coords path-num x y prev-dir dir]
+        
+(defn lvl-gate-coords [paths]
+  (let [add-connected  (fn [coords path-num x y prev-dir dir]
                          (assoc-in coords [[x y] path-num] [(prev-dir opposit :mid) dir])) 
 
         path-to-coords (fn [path-num init-coords]
@@ -67,15 +68,56 @@
 (defn get-gates [coords x y]
   (let [coord              (get coords [x y])
         filter-down-rights (partial filterv #(contains? #{:down :right} %))
-        down-rights        (into {} 
-                                 (for [[path-num connection] coord] 
-                                   (let [filtered (filter-down-rights connection)]
-                                     (if (empty? filtered)
-                                       nil
-                                       [path-num filtered]))))]
+        down-rights        (into {} (for [[path-num connection] coord] 
+                                      (let [filtered (filter-down-rights connection)]
+                                        (if (empty? filtered)
+                                          nil
+                                          [path-num filtered]))))]
     down-rights))
 
-(defn map-chunk [seed, x, y] nil)
+(defn rng-for [seed x y] (random-seed (str seed \  x \   y)))
+
+(def map-chunk-size 100)
+
+(defn get-gates-positions [gates rng]
+  (into {} (for 
+             [[path-num borders] gates] 
+             [path-num (into {} (map #(vector % [(random-int rng 0 (dec map-chunk-size))]) borders))])))
+  
+(defn map-chunk [seed coords x y]
+  (let [gates-positions (fn [n-x n-y] (let [rng       (rng-for seed n-x n-y)
+                                            gates     (get-gates coords n-x n-y)
+                                            positions (get-gates-positions gates rng)]
+                                        [positions rng]))
+
+        dir-to-pos       (fn [dir] (case dir
+                                     :left  0
+                                     :right (dec map-chunk-size)
+                                     :up    0
+                                     :down  (dec map-chunk-size)))
+
+        absolute-pos     (fn [dir pos] (case dir
+                                         (:left :right) [(dir-to-pos dir) pos]
+                                         (:up   :down)  [pos (dir-to-pos dir)]))
+
+        absolute-for-dir (fn [dir-inner dir-outer borders] (if (contains? borders dir-outer)
+                                                             (mapv (partial absolute-pos dir-inner) (dir-outer borders))
+                                                             nil))
+
+        absolute-gates   (fn [dir-inner dir-outer positions]
+                           (into {} (for [[path-num borders] positions] [path-num (absolute-for-dir dir-inner dir-outer borders)])))
+
+        neighbor-gates   (fn [dir] (let [[n-x n-y]    (move-coord x y dir)
+                                         [positions _] (gates-positions n-x n-y)]
+                                     (absolute-gates dir (dir opposit) positions)))
+
+        [positions rng]  (gates-positions x y)
+
+        my-gates         (fn [dir] (absolute-gates dir dir positions))
+
+        all-gates        (merge-with concat (my-gates :down) (my-gates :right) (neighbor-gates :up) (neighbor-gates :left))]
+    [all-gates]))
+
 
 
 ; game loop + graphics

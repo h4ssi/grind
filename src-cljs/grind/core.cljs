@@ -155,28 +155,31 @@
     (set! (.-width  canvas) size)
     (set! (.-height canvas) size)
     (let [c (render-context canvas)]
-      (set! (.-fillStyle c) "rgb(0,0,200)")
       (dorun (for [x (range map-chunk-size)
                    y (range map-chunk-size)]
                (when-not (contains? map-chunk [x y])
+                 (set! (.-fillStyle c) (if (even? (+ x y)) "rgb(0,0,200)" "rgb(0,0,100"))
                  (.fillRect c (* x block-size) (* y block-size) block-size block-size))))
       canvas)))
+
+(defn offset [size] (quot size -2))
 
 (defn draw [canvas context state]
   (let [c             context
         px            (get-in state [:pos :x])
         py            (get-in state [:pos :y])
+        [cx cy]       (:chunk-index state)
         w             (.-width  canvas)
         h             (.-height canvas)
         tx            (quot (.-width  canvas) 2)
         ty            (quot (.-height canvas) 2)
-        player-offset (quot player-size -2)
-        chunk-offset  (quot map-chunk-texture-width -2)]
+        player-offset (offset player-size)
+        chunk-offset  (offset map-chunk-texture-width)]
     (.clearRect c 0 0 w h)
     (.save c)
     (.translate c (- tx px) (- ty py))
     ; draw map
-    (.drawImage c (:chunk-texture state) chunk-offset chunk-offset)
+    (.drawImage c (:chunk-texture state) (+ (* cx map-chunk-texture-width) chunk-offset) (+ (* cy map-chunk-texture-width) chunk-offset))
     ; draw player
     (set! (.-fillStyle c) "rgb(200,0,0)")
     (.translate c player-offset player-offset)
@@ -188,11 +191,18 @@
     (draw canvas context state) ;(* 10 (.sin js/Math (* 0.001 t))))
     (go (>! drawn t))))
 
-(def initial-state (let [chunk (map-chunk "" (grind.core/lvl-gate-coords (grind.core/lvl-paths "" 3)) 0 0)]
-                     {:pos { :x 0 :y 0 }
-                      :vel { :x 0 :y 0 }
-                      :chunk chunk
-                      :chunk-texture (draw-map-chunk chunk)}))
+(defn pos-to-chunk-index [x y]
+  (let [o (offset map-chunk-texture-width)
+        t (fn [c] (.ceil js/Math (double (/ (+ c o) map-chunk-texture-width))))]
+    [(t x) (t y)]))
+
+(defn load-chunk [state x y]
+  (let [chunk (map-chunk "" (grind.core/lvl-gate-coords (grind.core/lvl-paths "" 3)) x y)]
+    (l (str "loading chunk " x \/ y))
+    (assoc state
+           :chunk-index [x y]
+           :chunk chunk
+           :chunk-texture (draw-map-chunk chunk))))
 
 (def key-inputs {37 :left 
                  38 :up
@@ -209,8 +219,11 @@
 (defn key-pressed  [inputs event] (key-input inputs event :pressed))
 (defn key-released [inputs event] (key-input inputs event :released))
 
+(def initial-state {:pos { :x 0 :y 0 }
+                    :vel { :x 0 :y 0 }})
+
 (defn game-step [prev-state inputs]
-  (when-not (empty? inputs) (l inputs))
+  ;(when-not (empty? inputs) (l inputs))
   (let [change-vel        (fn [state axis dir pressed-or-released] 
                             (assoc-in state [:vel axis] (* (if (= pressed-or-released :pressed) 10 0) dir)))
         state-with-inputs (reduce (fn [state [input param]]
@@ -221,10 +234,16 @@
                                       :down  (change-vel state :y  1 param)))
                                   prev-state
                                   inputs)
-        change-pos        (fn [axis state] (update-in state [:pos axis] #(+ % (get-in state [:vel axis]))))]
+        change-pos        (fn [axis state] (update-in state [:pos axis] #(+ % (get-in state [:vel axis]))))
+        check-new-chunk   (fn [state]
+                            (let [chunk-index (pos-to-chunk-index (get-in state [:pos :x]) (get-in state [:pos :y]))]
+                              (if (= (:chunk-index state) chunk-index)
+                                state
+                                (apply load-chunk state chunk-index))))]
     (->> state-with-inputs
          (change-pos :x)
-         (change-pos :y))))
+         (change-pos :y)
+         (check-new-chunk))))
 
 (defn game-loop []
   (let [canvas  (render-canvas)
